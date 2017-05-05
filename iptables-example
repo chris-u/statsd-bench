@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# enable forwarding
+echo 1 >| /proc/sys/net/ipv4/ip_forward
+
+# get softirq sharing between CPU cores for Receive Packet Steering
+# https://access.redhat.com/documentation/en-US/Red_Hat_Enterprise_Linux/6/html/Performance_Tuning_Guide/network-rps.html
+for rxq in $(ls -1 /sys/class/net/*/queues/rx-*/rps_cpus)
+do
+  echo $(taskset -p 1 | cut -d':' -f2 | tr -d '[:space:]') >| $rxq
+done
+
+# clear rules
+iptables -t filter -F
+iptables -t filter -X
+iptables -t nat -F
+iptables -t nat -X
+iptables -t mangle -F
+iptables -t mangle -X
+iptables -t filter -P INPUT ACCEPT
+iptables -t filter -P OUTPUT ACCEPT
+iptables -t filter -P FORWARD ACCEPT
+
+# dnats
+iptables -t nat -N DNAT8126
+iptables -t nat -A DNAT8126 -p udp --dport 8125 -j REDIRECT --to-port 8126
+
+iptables -t nat -N DNAT8127
+iptables -t nat -A DNAT8127 -p udp --dport 8125 -j REDIRECT --to-port 8127
+
+iptables -t nat -N DNAT8128
+iptables -t nat -A DNAT8128 -p udp --dport 8125 -j REDIRECT --to-port 8128
+
+iptables -t nat -N DNAT8129
+iptables -t nat -A DNAT8129 -p udp --dport 8125 -j REDIRECT --to-port 8129
+
+# round robin balance DNAT requests
+iptables -t nat -N ROUNDROBIN
+iptables -t nat -A ROUNDROBIN -m statistic --mode nth --every 4 --packet 0 -j DNAT8126
+iptables -t nat -A ROUNDROBIN -m statistic --mode nth --every 4 --packet 1 -j DNAT8127
+iptables -t nat -A ROUNDROBIN -m statistic --mode nth --every 4 --packet 2 -j DNAT8128
+iptables -t nat -A ROUNDROBIN -m statistic --mode nth --every 4 --packet 3 -j DNAT8129
+
+# despatch NEW connections to the round-robin chain
+iptables -t nat -A PREROUTING -p udp --dport 8125 -j ROUNDROBIN
