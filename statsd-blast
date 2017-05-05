@@ -1,0 +1,28 @@
+#!/bin/bash
+# send a large volume of metrics to a host; several threads will need to be run to max out a reasonable statsd receiver
+
+host=$(host -t any $1 | awk '{ print $NF}')
+
+target_count=$2
+
+test -n "$host" || exit 3
+
+
+SECONDS=0
+count=0
+
+
+while
+  :
+do
+  if
+    test $SECONDS -ge 1
+  then
+    echo $count
+    SECONDS=0
+    count=0
+  else
+    echo -n "statsd.benchmark_spray_$(( $RANDOM % 1024)):$(( $RANDOM * $RANDOM))|ms"  > /dev/udp/$host/8125
+    count=$(($count+1))
+  fi
+done  &
