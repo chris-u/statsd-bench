@@ -1,0 +1,29 @@
+#!/bin/bash
+# sends a constant stream of metrics to a host; should be roughly 100 per second
+
+
+host=$(host -t any $1 | awk '{ print $NF}')
+
+test -n "$host" || exit 3
+
+
+SECONDS=0
+count=0
+
+while
+  sleep 0.0085
+do
+  if
+    test $count -ge 100
+  then
+    until test $SECONDS -ge 1
+    do
+      :
+    done
+    SECONDS=0
+    count=0
+  else
+    echo -n "statsd.benchmark_canary_$(( $RANDOM % 64)):$(( $RANDOM * $RANDOM))|ms"  > /dev/udp/$host/8125
+    count=$(($count+1))
+  fi
+done  &
